@@ -1,0 +1,6 @@
+[submodule "robosuite-2951"]
+	path = robosuite-2951
+	url = https://github.com/rthomp17/robosuite-2951.git
+[submodule "PropNet"]
+	path = PropNet
+	url = https://github.com/YunzhuLi/PropNet.git
