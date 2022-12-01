@@ -2,8 +2,8 @@ from shape_generator import *
 
 
 def main():
-    mesh = make_box()
-    mesh.show()
+    shapes = generate_shapes(5, 5, 5)
+    generate_shape_images(shapes)
 
 
 if __name__ == "__main__":
