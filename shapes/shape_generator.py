@@ -35,6 +35,18 @@ def generate_shapes(n_cyl=3, n_tri=3, n_box=3):
     return shapes
 
 
+def save_image(shape_name, png):
+    f = open(f"shape_images/{shape_name}.png", "wb")
+    f.write(png)
+    f.close()
+
+
+def save_obj(shape_name, mesh):
+    f = open(f"shape_objs/{shape_name}.stl", "wb")
+    mesh.export(f, "stl")
+    f.close()
+
+
 def generate_shape_images(shapes):
     scene = trimesh.Scene()
     i = 0
@@ -43,9 +55,8 @@ def generate_shape_images(shapes):
         scene.add_geometry(shape, node_name="zoink")
         scene.set_camera(distance=0.12)
         png = scene.save_image(resolution=(64, 64))
-        f = open(f"shape_images/shape{i}.png", "wb")
-        f.write(png)
-        f.close()
+        save_image(f"shape{i}", png)
+        save_obj(f"shape{i}", shape)
         scene.delete_geometry("zoink")
         i += 1
 
