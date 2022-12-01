@@ -5,14 +5,14 @@ from shapely.geometry.polygon import LinearRing
 
 
 def make_box():
-    box_mesh = trimesh.creation.box((random.uniform(0.03, 0.07), random.uniform(0.03, 0.07), 0.05))
+    box_mesh = trimesh.creation.box((random.uniform(0.025, 0.08), random.uniform(0.025, 0.08), 0.05))
     return box_mesh
 
 
 def make_triangle_prism():
-    s1_length = random.uniform(0.04, 0.06)
+    s1_length = random.uniform(0.025, 0.07)
 
-    ring = LinearRing([(0.0, 0.0), (s1_length, 0.0), (random.uniform(0.0, s1_length*1.2), random.uniform(0.04, 0.06))])
+    ring = LinearRing([(0.0, 0.0), (s1_length, 0.0), (random.uniform(-s1_length*0.4, s1_length*1.4), random.uniform(0.02, 0.06))])
     triangle = Polygon(ring)
 
     prism_mesh = trimesh.creation.extrude_polygon(triangle, 0.05)
@@ -53,7 +53,7 @@ def generate_shape_images(shapes):
 
     for shape in shapes:
         scene.add_geometry(shape, node_name="zoink")
-        scene.set_camera(distance=0.12)
+        scene.set_camera(distance=0.15)
         png = scene.save_image(resolution=(64, 64))
         save_image(f"shape{i}", png)
         save_obj(f"shape{i}", shape)
