@@ -1,0 +1,6 @@
+trimesh==3.16.4
+pyglet==1.5.11
+networkx==2.8.8
+scipy==1.5.4
+shapely==1.8.5
+mapbox_earcut==1.0.0
