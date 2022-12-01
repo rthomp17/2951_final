@@ -47,16 +47,30 @@ def save_obj(shape_name, mesh):
     f.close()
 
 
-def generate_shape_images(shapes):
+def generate_shape_images(shapes, resolution=32):
     scene = trimesh.Scene()
     i = 0
 
     for shape in shapes:
         scene.add_geometry(shape, node_name="zoink")
         scene.set_camera(distance=0.15)
-        png = scene.save_image(resolution=(64, 64))
+        png = scene.save_image(resolution=(resolution, resolution))
         save_image(f"shape{i}", png)
-        save_obj(f"shape{i}", shape)
         scene.delete_geometry("zoink")
         i += 1
 
+
+def save_shapes(shapes):
+    i = 0
+    for shape in shapes:
+        save_obj(f"shape{i}", shape)
+        i += 1
+
+
+def main():
+    shapes = generate_shapes(100, 100, 100)
+    generate_shape_images(shapes)
+
+
+if __name__ == "__main__":
+    main()
