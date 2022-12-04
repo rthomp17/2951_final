@@ -11,6 +11,13 @@ cd 2951_final/
 git submodule init    
 git submodule update
 ```
+Don't forget to install mujoco:
+```
+wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+tar -xf mujoco210-linux-x86_64.tar.gz
+mv mujoco210 .mujoco/
+rm mujoco210-linux-x86_64.tar.gz
+```
 
 # needs to be done every time you open a terminal window
 `export LD_LIBRARY_PATH=$HOME/.mujoco/mujoco210/bin:$LD_LIBRARY_PATH`
