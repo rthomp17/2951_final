@@ -3,12 +3,12 @@
 Every time you ssh in:
 ```
 module load opengl/mesa-12.0.6 python/3.9.0
-python3 -m venv ~/envs/2951
 source $HOME/envs/2951/bin/activate
 ```
 
 One-time install:
 ```
+python3 -m venv ~/envs/2951
 git clone git@github.com:rthomp17/2951_final.git  
 cd 2951_final/
 git submodule init    
