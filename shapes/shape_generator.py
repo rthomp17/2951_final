@@ -72,6 +72,5 @@ def main():
     generate_shape_images(shapes)
 
 
-
 if __name__ == "__main__":
     main()

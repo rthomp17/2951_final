@@ -1,2 +1,4 @@
-/.idea
-/__pycache__
+.idea/
+__pycache__/
+*/vae.cpython-36.pyc
+shape_images/
