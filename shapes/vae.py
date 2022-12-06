@@ -58,6 +58,7 @@ class VAE(nn.Module):
         return z, mu, logvar
 
     def representation(self, x):
+        """This function gets you the encoding!"""
         return self.bottleneck(self.encoder(x))[0]
 
     def forward(self, x):

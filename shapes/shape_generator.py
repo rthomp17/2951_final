@@ -42,7 +42,7 @@ def save_image(shape_name, png):
 
 
 def save_obj(shape_name, mesh):
-    f = open(f"shape_objs/{shape_name}.stl", "wb")
+    f = open(f"shape_objs/shape/{shape_name}.stl", "wb")
     mesh.export(f, "stl")
     f.close()
 
@@ -70,6 +70,7 @@ def save_shapes(shapes):
 def main():
     shapes = generate_shapes(100, 100, 100)
     generate_shape_images(shapes)
+
 
 
 if __name__ == "__main__":

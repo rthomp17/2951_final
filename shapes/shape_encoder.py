@@ -70,7 +70,7 @@ def main():
     # vae = train_vae(dataset, epochs=100)
     vae = load_vae()
 
-    fixed_x = dataset[120][0].unsqueeze(0)
+    fixed_x = dataset[199][0].unsqueeze(0)
     compare_x = compare(fixed_x, vae)
 
     save_image(compare_x.data.cpu(), 'sample_image.png')
