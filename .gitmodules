@@ -3,4 +3,4 @@
 	url = https://github.com/rthomp17/robosuite-2951.git
 [submodule "PropNet"]
 	path = PropNet
-	url = https://github.com/YunzhuLi/PropNet.git
+	url = https://github.com/theo-fernandez/PropNet.git
