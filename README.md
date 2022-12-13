@@ -76,3 +76,11 @@ onager launch --backend slurm --jobname push_test1 --duration 1:00:00
 --gpus 1
 --mem 4 --partition 3090-gcondo
 ```
+
+To generate data for and run the NERF decoder test (from the 2951 repo)
+```
+mkdir gt
+mkdir images
+mkdir masks
+python ./robosuite-2951/robosuite/demos/demo_record_dynamics.py
+python nerf_decoder_test.py 
