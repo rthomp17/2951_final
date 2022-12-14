@@ -35,8 +35,17 @@ def generateXML(name, shape):
     tree.write("./shapes/xml_objs/" + name + ".xml")
 
 def main():
-    for i in range(15):
-        generateXML("shape" + str(i), "circle")
+    for i in range(0, 10):
+        generateXML("test-shape-" + str(i), "triangle")
+
+    for i in range(10, 20):
+        generateXML("test-shape-" + str(i), "rectangle")
+
+    for i in range(0, 20):
+        generateXML("train-shape-" + str(i), "triangle")
+
+    for i in range(20, 40):
+        generateXML("train-shape-" + str(i), "rectangle")
 
 
 if __name__ == "__main__":
