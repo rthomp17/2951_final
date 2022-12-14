@@ -1,29 +1,37 @@
+import torch
+from torch.utils.data import TensorDataset, DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+# from torchvision import models
+import torchvision.transforms as transforms
+from PIL import Image 
 
-import tensorflow as tf
-
-tf.random.set_seed(42)
-tf.compat.v1.enable_eager_execution()
+# TODO check if i need to set the seed, eager execution and fix for torch
+torch.manual_seed(42)
+# torch.compat.v1.enable_eager_execution()
 
 import os
 import glob
-import imageio
+# import imageio
 import numpy as np
 from tqdm import tqdm
-from tensorflow import keras
-from tensorflow.keras import layers
+# from tensorflow import keras
+# from tensorflow.keras import layers
 import pickle
 import matplotlib.pyplot as plt
 
-AUTO = tf.data.AUTOTUNE
+# AUTO = tf.data.AUTOTUNE
 BATCH_SIZE = 1
 NUM_SAMPLES = 32
 EPOCHS = 20
 POS_ENCODE_DIMS = 16
 H = IMAGE_HEIGHT = 64
 W = IMAGE_WIDTH = 64
+# TODO check if i need eager execution and fix for torch
 #tf.enable_eager_execution()
-tf.config.run_functions_eagerly(True)
-tf.compat.v1.enable_eager_execution()
+# torch.config.run_functions_eagerly(True)
+# torch.compat.v1.enable_eager_execution()
 
 def process_dynamics(state):
     #concatenates all the data together into a thingy
@@ -38,6 +46,9 @@ def process_dynamics(state):
     vector += [state['eef']['x'], state['eef']['y']]
     return vector
 
+# look up torch how to load images using torchvision
+# save in a tensor
+# load dynamics data and image
 def load_images():
     data_dir = './images'
     pickle_filenames = [name for name in os.listdir('./gt')]
@@ -51,12 +62,14 @@ def load_images():
     images = np.zeros((len(filenames), 64, 64, 3))
     dynamics = np.zeros((len(filenames), 14))
     for i in range(len(filenames)):
-
         name = filenames[i]
         rollout_num = name[4]
         step_num = int(name[6:-4])
         dynamics[i] = process_dynamics(dynamics_dict[rollout_num][step_num])
-        images[i] = imageio.imread(os.path.join(data_dir, filenames[i]))
+        img = Image.open(os.path.join(data_dir, filenames[i])).convert('RGB')
+        img = transforms.Resize([64, 64])(img)
+        tensor = torch.reshape(transforms.ToTensor()(img), (64, 64, 3))
+        images[i] = tensor
         mask = np.load(os.path.join('./masks', filenames[i][:-3] + 'npy'))
 
         images[i] = np.where(mask>0, images[i], np.array([255,255,255]))/255
@@ -66,7 +79,7 @@ def load_images():
     #         # new_img = np.array(rgb[i]).reshape(sample_extent, sample_extent, 3)/255
     #         # new_img = np.swapaxes(new_img, 0, 1)
     #     data_dict[obj] = [images, coords, rgb]
-    return (tf.convert_to_tensor(images, dtype=tf.uint8), tf.convert_to_tensor(dynamics, dtype=tf.float32))
+    return (torch.tensor(images), torch.tensor(dynamics))
 
 camera_pose_map = {'tableview': [[ 0.,         -0.99998082,  0.,          0.,        ],
                                   [ 0.99998082,  0.,          0.,          0.,        ],
@@ -95,9 +108,9 @@ def encode_position(x):
     """
     positions = [x]
     for i in range(POS_ENCODE_DIMS):
-        for fn in [tf.sin, tf.cos]:
+        for fn in [torch.sin, torch.cos]:
             positions.append(fn(2.0 ** i * x))
-    return tf.concat(positions, axis=-1)
+    return torch.concat(positions, axis=-1)
 
 def get_rays(height, width, focal, pose):
     """Computes origin point and direction vector of rays.
@@ -112,9 +125,9 @@ def get_rays(height, width, focal, pose):
         Tuple of origin point and direction vector for rays.
     """
     # Build a meshgrid for the rays.
-    i, j = tf.meshgrid(
-        tf.range(width, dtype=tf.float32),
-        tf.range(height, dtype=tf.float32),
+    i, j = torch.meshgrid( 
+        torch.range(0, width-1, dtype=torch.float32),
+        torch.range(0, height-1, dtype=torch.float32),
         indexing="xy",
     )
 
@@ -125,20 +138,24 @@ def get_rays(height, width, focal, pose):
     transformed_j = (j - height * 0.5) / focal
 
     # Create the direction unit vectors.
-    directions = tf.stack([transformed_i, -transformed_j, -tf.ones_like(i)], axis=-1)
+    directions = np.stack([transformed_i, -transformed_j, -torch.ones_like(i)], axis=-1)
 
+    # print("testing")
+    # print(pose)
     # Get the camera matrix.
-    camera_matrix = pose[:3, :3]
-    height_width_focal = pose[:3, -1]
+    pose = np.array(pose)
+    camera_matrix = pose[:3,:3]
+    height_width_focal = pose[:3,-1]
+    print(camera_matrix.shape)
 
     # Get origins and directions for the rays.
     transformed_dirs = directions[..., None, :]
     camera_dirs = transformed_dirs * camera_matrix
-    ray_directions = tf.reduce_sum(camera_dirs, axis=-1)
-    ray_origins = tf.broadcast_to(height_width_focal, tf.shape(ray_directions))
+    ray_directions = np.sum(camera_dirs, axis=-1)
+    ray_origins = np.broadcast_to(height_width_focal, np.shape(ray_directions))
 
     # Return the origins and directions.
-    return (ray_origins, ray_directions)
+    return (torch.tensor(ray_origins), torch.tensor(ray_directions))
 
 
 def render_flat_rays(ray_origins, ray_directions, near, far, num_samples, rand=False):
@@ -157,47 +174,70 @@ def render_flat_rays(ray_origins, ray_directions, near, far, num_samples, rand=F
     """
     # Compute 3D query points.
     # Equation: r(t) = o+td -> Building the "t" here.
-    t_vals = tf.linspace(near, far, num_samples)
+    t_vals = torch.linspace(near, far, num_samples) #TODO change tf to torch
     if rand:
         # Inject uniform noise into sample space to make the sampling
         # continuous.
         shape = list(ray_origins.shape[:-1]) + [num_samples]
-        noise = tf.random.uniform(shape=shape) * (far - near) / num_samples
+        noise = np.random.uniform(size=shape) * (far - near) / num_samples
         t_vals = t_vals + noise
 
     # Equation: r(t) = o + td -> Building the "r" here.
     rays = ray_origins[..., None, :] + (
         ray_directions[..., None, :] * t_vals[..., None]
     )
-    rays_flat = tf.reshape(rays, [-1, 3])
+    rays_flat = torch.reshape(rays, [-1, 3])
     rays_flat = encode_position(rays_flat)
     return (rays_flat, t_vals)
 
 
-def get_nerf_model(num_layers, num_pos, num_dynamics=14):
-    """Generates the NeRF neural network.
+# def get_nerf_model(num_layers, num_pos, num_dynamics=14):
+#     """Generates the NeRF neural network.
 
-    Args:
-        num_layers: The number of MLP layers.
-        num_pos: The number of dimensions of positional encoding.
+#     Args:
+#         num_layers: The number of MLP layers.
+#         num_pos: The number of dimensions of positional encoding.
 
-    Returns:
-        The [`tf.keras`](https://www.tensorflow.org/api_docs/python/tf/keras) model.
-    """
-    input1 = keras.Input(shape=(num_pos, 2 * 3 * POS_ENCODE_DIMS + 3))
-    # input1 = layers.Dense(units=64, activation="relu")(input1)
-    input2 = keras.Input(shape=(num_pos, num_dynamics,))
-    inputs = layers.concatenate([input1, input2])
-    x = inputs
-    for i in range(num_layers):
-        x = layers.Dense(units=64, activation="relu")(x)
-        if i % 4 == 0 and i > 0:
-            # Inject residual connection.
-            x = layers.concatenate([x, inputs], axis=-1)
-    outputs = layers.Dense(units=4)(x)
-    return keras.Model(inputs=[input1, input2], outputs=outputs)
+#     Returns:
+#         The [`tf.keras`](https://www.tensorflow.org/api_docs/python/tf/keras) model.
+#     """
+#     # TODO create two different input layers, one which is number of ray sample and dimension of encoding
+#     # combine keras into one input layer but using torch
+#     input1 = keras.Input(shape=(num_pos, 2 * 3 * POS_ENCODE_DIMS + 3))
+#     # input1 = layers.Dense(units=64, activation="relu")(input1)
+#     input2 = keras.Input(shape=(num_pos, num_dynamics,))
+#     inputs = layers.concatenate([input1, input2])
+#     x = inputs
+#     for i in range(num_layers):
+#         x = layers.Dense(units=64, activation="relu")(x)
+#         if i % 4 == 0 and i > 0:
+#             # Inject residual connection.
+#             x = layers.concatenate([x, inputs], axis=-1)
+#     outputs = layers.Dense(units=4)(x)
+#     return keras.Model(inputs=[input1, input2], outputs=outputs)
+
+class NerfModel(nn.Module):
+    def __init__(self, num_layers):
+        super(NerfModel, self).__init__()
+        self.num_layers = num_layers
+        self.act = nn.ReLU()
+        self.dense_layers = []
+        for _ in range(self.num_layers):
+            self.dense_layers.append(nn.Linear(64, 64))
+        self.outputs = nn.Linear(64, 4)
+
+    def forward(self, input):
+        x = input
+        for i in range(self.num_layers):
+            x = self.act(self.dense_layers[i](x))
+            if i % 4 == 0 and i > 0:
+                x = torch.cat((x, input), 1)
+
+        x = self.outputs(x)
+        return F.log_softmax(x)
 
 
+# TODO replace tf with torch
 def render_rgb_depth(model, rays_flat, dynamics, t_vals, rand=True, train=True):
     """Generates the RGB image and depth map from model prediction.
 
@@ -214,42 +254,42 @@ def render_rgb_depth(model, rays_flat, dynamics, t_vals, rand=True, train=True):
         Tuple of rgb image and depth map.
     """
     # Get the predictions from the nerf model and reshape it.
-    new_dynamics = tf.expand_dims(dynamics, 1)
-    if train:
-        predictions = model((rays_flat, tf.repeat(new_dynamics, rays_flat.shape[1], axis=1)))
-    else:
-        predictions = model.predict((rays_flat, tf.repeat(new_dynamics, rays_flat.shape[1], axis=1)))
-    predictions = tf.reshape(predictions, shape=(BATCH_SIZE, H, W, NUM_SAMPLES, 4))
+    new_dynamics = torch.Tensor.expand(dynamics, 1)
+
+    input = torch.cat([rays_flat, torch.Tensor.repeat(new_dynamics, rays_flat.shape[1])], axis=1)
+    predictions = model(input)
+
+    predictions = torch.reshape(predictions, shape=(BATCH_SIZE, H, W, NUM_SAMPLES, 4))
 
     # Slice the predictions into rgb and sigma.
-    rgb = tf.sigmoid(predictions[..., :-1])
-    sigma_a = tf.nn.relu(predictions[..., -1])
+    rgb = torch.sigmoid(predictions[..., :-1])
+    sigma_a = nn.ReLU(predictions[..., -1])
 
     # Get the distance of adjacent intervals.
     delta = t_vals[..., 1:] - t_vals[..., :-1]
     # delta shape = (num_samples)
     if rand:
-        delta = tf.concat(
-            [delta, tf.broadcast_to([1e10], shape=(BATCH_SIZE, H, W, 1))], axis=-1
+        delta = torch.concat(
+            [delta, torch.broadcast_to([1e10], shape=(BATCH_SIZE, H, W, 1))], axis=-1
         )
-        alpha = 1.0 - tf.exp(-sigma_a * delta)
+        alpha = 1.0 - torch.exp(-sigma_a * delta)
     else:
-        delta = tf.concat(
-            [delta, tf.broadcast_to([1e10], shape=(BATCH_SIZE, 1))], axis=-1
+        delta = torch.concat(
+            [delta, torch.broadcast_to([1e10], shape=(BATCH_SIZE, 1))], axis=-1
         )
-        alpha = 1.0 - tf.exp(-sigma_a * delta[:, None, None, :])
+        alpha = 1.0 - torch.exp(-sigma_a * delta[:, None, None, :])
 
     # Get transmittance.
     exp_term = 1.0 - alpha
     epsilon = 1e-10
-    transmittance = tf.math.cumprod(exp_term + epsilon, axis=-1, exclusive=True)
+    transmittance = torch.cumprod(exp_term + epsilon, axis=-1, exclusive=True)
     weights = alpha * transmittance
-    rgb = tf.reduce_sum(weights[..., None] * rgb, axis=-2)
+    rgb = torch.sum(weights[..., None] * rgb, axis=-2)
 
     if rand:
-        depth_map = tf.reduce_sum(weights * t_vals, axis=-1)
+        depth_map = torch.sum(weights * t_vals, axis=-1)
     else:
-        depth_map = tf.reduce_sum(weights * t_vals[:, None, None], axis=-1)
+        depth_map = torch.sum(weights * t_vals[:, None, None], axis=-1)
     return (rgb, depth_map)
 
 def map_fn(pose):
@@ -273,79 +313,79 @@ def map_fn(pose):
     )
     return (rays_flat, t_vals)
 
+# TODO make torch friendly
+# class NeRF(keras.Model):
+#     def __init__(self, nerf_model):
+#         super().__init__()
+#         self.nerf_model = nerf_model
 
-class NeRF(keras.Model):
-    def __init__(self, nerf_model):
-        super().__init__()
-        self.nerf_model = nerf_model
+#     def call(self, inputs):
+#         self.train_step(inputs)
 
-    def call(self, inputs):
-        self.train_step(inputs)
-
-    def __call__(self, inputs):
-        self.train_step(inputs)
+#     def __call__(self, inputs):
+#         self.train_step(inputs)
 
 
-    def compile(self, optimizer, loss_fn):
-        super().compile()
-        self.optimizer = optimizer
-        self.loss_fn = loss_fn
-        self.loss_tracker = keras.metrics.Mean(name="loss")
-        self.psnr_metric = keras.metrics.Mean(name="psnr")
+#     def compile(self, optimizer, loss_fn):
+#         super().compile()
+#         self.optimizer = optimizer
+#         self.loss_fn = loss_fn
+#         self.loss_tracker = keras.metrics.Mean(name="loss")
+#         self.psnr_metric = keras.metrics.Mean(name="psnr")
 
-    def train_step(self, inputs):
-        # Get the images and the rays.
-        (images, rays, dynamics) = inputs
-        (rays_flat, t_vals) = rays
+#     def train_step(self, inputs):
+#         # Get the images and the rays.
+#         (images, rays, dynamics) = inputs
+#         (rays_flat, t_vals) = rays
 
-        with tf.GradientTape() as tape:
-            # Get the predictions from the model.
-            rgb, _ = render_rgb_depth(
-                model=self.nerf_model, rays_flat=rays_flat, dynamics=dynamics, t_vals=t_vals, rand=True
-            )
-            loss = self.loss_fn(images, rgb)
+#         with torch.GradientTape() as tape:
+#             # Get the predictions from the model.
+#             rgb, _ = render_rgb_depth(
+#                 model=self.nerf_model, rays_flat=rays_flat, dynamics=dynamics, t_vals=t_vals, rand=True
+#             )
+#             loss = self.loss_fn(images, rgb)
         
-        # Get the trainable variables.
-        trainable_variables = self.nerf_model.trainable_variables
+#         # Get the trainable variables.
+#         trainable_variables = self.nerf_model.trainable_variables
 
-        # Get the gradeints of the trainiable variables with respect to the loss.
-        gradients = tape.gradient(loss, trainable_variables)
-
-        
-        # Apply the grads and optimize the model.
-        self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-
-        # Get the PSNR of the reconstructed images and the source images.
-        psnr = tf.image.psnr(images, rgb, max_val=1.0)
+#         # Get the gradeints of the trainiable variables with respect to the loss.
+#         gradients = tape.gradient(loss, trainable_variables)
 
         
-        # Compute our own metrics
-        self.loss_tracker.update_state(loss)
-        self.psnr_metric.update_state(psnr)
-        return {"loss": self.loss_tracker.result(), "psnr": self.psnr_metric.result()}
+#         # Apply the grads and optimize the model.
+#         self.optimizer.apply_gradients(zip(gradients, trainable_variables))
 
-    def test_step(self, inputs):
-        # Get the images and the rays.
-        (images, rays, dynamics) = inputs
-        (rays_flat, t_vals) = rays
+#         # Get the PSNR of the reconstructed images and the source images.
+#         psnr = torch.image.psnr(images, rgb, max_val=1.0)
 
-        # Get the predictions from the model.
-        rgb, _ = render_rgb_depth(
-            model=self.nerf_model, rays_flat=rays_flat, dynamics=dynamics, t_vals=t_vals, rand=True
-        )
-        loss = self.loss_fn(images, rgb)
+        
+#         # Compute our own metrics
+#         self.loss_tracker.update_state(loss)
+#         self.psnr_metric.update_state(psnr)
+#         return {"loss": self.loss_tracker.result(), "psnr": self.psnr_metric.result()}
 
-        # Get the PSNR of the reconstructed images and the source images.
-        psnr = tf.image.psnr(images, rgb, max_val=1.0)
+#     def test_step(self, inputs):
+#         # Get the images and the rays.
+#         (images, rays, dynamics) = inputs
+#         (rays_flat, t_vals) = rays
 
-        # Compute our own metrics
-        self.loss_tracker.update_state(loss)
-        self.psnr_metric.update_state(psnr)
-        return {"loss": self.loss_tracker.result(), "psnr": self.psnr_metric.result()}
+#         # Get the predictions from the model.
+#         rgb, _ = render_rgb_depth(
+#             model=self.nerf_model, rays_flat=rays_flat, dynamics=dynamics, t_vals=t_vals, rand=True
+#         )
+#         loss = self.loss_fn(images, rgb)
 
-    @property
-    def metrics(self):
-        return [self.loss_tracker, self.psnr_metric]
+#         # Get the PSNR of the reconstructed images and the source images.
+#         psnr = torch.image.psnr(images, rgb, max_val=1.0)
+
+#         # Compute our own metrics
+#         self.loss_tracker.update_state(loss)
+#         self.psnr_metric.update_state(psnr)
+#         return {"loss": self.loss_tracker.result(), "psnr": self.psnr_metric.result()}
+
+#     @property
+#     def metrics(self):
+#         return [self.loss_tracker, self.psnr_metric]
 
 # Create the training split.
 split_index = int(num_images * 0.8)
@@ -361,27 +401,33 @@ train_poses = poses[:split_index]
 val_poses = poses[split_index:]
 
 # Make the training pipeline.
-train_img_ds = tf.data.Dataset.from_tensor_slices(train_images)
-train_pose_ds = tf.data.Dataset.from_tensor_slices(train_poses)
-train_dynamics_ds = tf.data.Dataset.from_tensor_slices(train_dynamics)
-train_ray_ds = train_pose_ds.map(map_fn, num_parallel_calls=AUTO)
-training_ds = tf.data.Dataset.zip((train_img_ds, train_ray_ds, train_dynamics_ds))
+# TODO torch translation
+train_img_ds = TensorDataset(train_images)
+# train_pose_ds = TensorDataset(torch.tensor(train_poses))
+train_dynamics_ds = TensorDataset(train_dynamics)
+train_ray_ds = map(map_fn, train_poses)
+train_ray_ds = list(train_ray_ds)
+# train_ray_ds = np.array([])
+# for train_pose in train_pose_ds:
+#     train_ray_ds.append(map_fn(train_pose))
+print(type(train_img_ds),type(train_ray_ds),type(train_dynamics_ds))
+training_ds = zip(train_img_ds, train_ray_ds, train_dynamics_ds)
 train_ds = (
     training_ds.shuffle(BATCH_SIZE)
-    .batch(BATCH_SIZE, drop_remainder=True, num_parallel_calls=AUTO)
-    .prefetch(AUTO)
+    .batch(BATCH_SIZE, drop_remainder=True)
+    .prefetch()
 )
 
 # Make the validation pipeline.
-val_img_ds = tf.data.Dataset.from_tensor_slices(val_images)
-val_pose_ds = tf.data.Dataset.from_tensor_slices(val_poses)
-val_dynamics_ds = tf.data.Dataset.from_tensor_slices(val_dynamics)
-val_ray_ds = val_pose_ds.map(map_fn, num_parallel_calls=AUTO)
-validation_ds = tf.data.Dataset.zip((val_img_ds, val_ray_ds, val_dynamics_ds))
+val_img_ds = TensorDataset(val_images)
+val_pose_ds = TensorDataset(val_poses)
+val_dynamics_ds = TensorDataset(val_dynamics)
+val_ray_ds = val_pose_ds.map(map_fn)
+validation_ds = TensorDataset.zip((val_img_ds, val_ray_ds, val_dynamics_ds))
 val_ds = (
     validation_ds.shuffle(BATCH_SIZE)
-    .batch(BATCH_SIZE, drop_remainder=True, num_parallel_calls=AUTO)
-    .prefetch(AUTO)
+    .batch(BATCH_SIZE, drop_remainder=True)
+    .prefetch()
 )
 
 
@@ -393,48 +439,50 @@ loss_list = []
 # print(test_rays)
 # exit(0)
 
-class TrainMonitor(keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        loss = logs["loss"]
-        loss_list.append(loss)
-        test_recons_images, depth_maps = render_rgb_depth(
-            model=self.model.nerf_model,
-            rays_flat=test_rays_flat,
-            dynamics=test_dynamics,
-            t_vals=test_t_vals,
-            rand=True,
-            train=False,
-        )
+# class TrainMonitor(keras.callbacks.Callback):
+#     def on_epoch_end(self, epoch, logs=None):
+#         loss = logs["loss"]
+#         loss_list.append(loss)
+#         test_recons_images, depth_maps = render_rgb_depth(
+#             model=self.model.nerf_model,
+#             rays_flat=test_rays_flat,
+#             dynamics=test_dynamics,
+#             t_vals=test_t_vals,
+#             rand=True,
+#             train=False,
+#         )
         
 
 
-        if epoch % 1 == 0:
-            # Plot the rgb, depth and the loss plot.
-            fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(20, 5))
-            ax[0].imshow(keras.preprocessing.image.array_to_img(test_recons_images[0]))
-            ax[0].set_title(f"Predicted Image: {epoch:03d}")
+#         if epoch % 1 == 0:
+#             # Plot the rgb, depth and the loss plot.
+#             fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(20, 5))
+#             ax[0].imshow(keras.preprocessing.image.array_to_img(test_recons_images[0]))
+#             ax[0].set_title(f"Predicted Image: {epoch:03d}")
 
-            ax[1].imshow(keras.preprocessing.image.array_to_img(test_imgs[0]))
-            ax[1].set_title(f"True Image: {epoch:03d}")
+#             ax[1].imshow(keras.preprocessing.image.array_to_img(test_imgs[0]))
+#             ax[1].set_title(f"True Image: {epoch:03d}")
 
-            ax[2].plot(loss_list)
-            ax[2].set_xticks(np.arange(0, EPOCHS + 1, 5.0))
-            ax[2].set_title(f"Loss Plot: {epoch:03d}")
+#             ax[2].plot(loss_list)
+#             ax[2].set_xticks(np.arange(0, EPOCHS + 1, 5.0))
+#             ax[2].set_title(f"Loss Plot: {epoch:03d}")
 
-            #fig.savefig(f"images/{epoch:03d}.png")
-            plt.show()
-            plt.close()
+#             #fig.savefig(f"images/{epoch:03d}.png")
+#             plt.show()
+#             plt.close()
 
 
 num_pos = H * W * NUM_SAMPLES
-print(num_pos)
-nerf_model = get_nerf_model(num_layers=4, num_pos=num_pos)
+# print(num_pos)
+# nerf_model = get_nerf_model(num_layers=4, num_pos=num_pos)
+network = NerfModel(num_layers=4)
 
 
-model = NeRF(nerf_model)
-model.compile(
-    optimizer=keras.optimizers.Adam(), loss_fn=keras.losses.MeanSquaredError(),
-)
+# model = NerfModel(nerf_model)
+optimizer = optim.Adam(network.parameters())
+# model.compile(
+#     optimizer=keras.optimizers.Adam(), loss_fn=keras.losses.MeanSquaredError(),
+# )
 # model.build((1, 256, 256, 3))
 # print(model.summary())
 
@@ -442,16 +490,76 @@ model.compile(
 # if not os.path.exists("images"):
 #     os.makedirs("images")
 
-model.fit(
-    train_ds,
-    validation_data=val_ds,
-    batch_size=BATCH_SIZE,
-    epochs=1,
-    callbacks=[TrainMonitor()],
-    #steps_per_epoch=split_index // BATCH_SIZE,
-)
+# model.fit(
+#     train_ds,
+#     validation_data=val_ds,
+#     batch_size=BATCH_SIZE,
+#     epochs=1,
+#     callbacks=[TrainMonitor()],
+#     #steps_per_epoch=split_index // BATCH_SIZE,
+# )
 
-keras.save_model( model, 'test_model')
+n_epochs = EPOCHS
+
+train_losses = []
+train_counter = []
+test_losses = []
+test_counter = [i*len(train_ds.dataset) for i in range(n_epochs + 1)]
+
+criterion =nn.CrossEntropyLoss()
+def train(epoch):
+    network.train()
+    for batch_idx, (data, target) in enumerate(train_ds):
+        data = data.unsqueeze(1)
+        optimizer.zero_grad()
+        (image, rays, dynamics) = data
+        (rays_flat, t_vals) = rays
+
+        
+        rgb, _ = render_rgb_depth(
+            model=network, rays_flat=rays_flat, dynamics=dynamics, t_vals=t_vals, rand=True
+        )
+        output = network(data)
+        loss = criterion(rgb, image)
+        loss.backward()
+        optimizer.step()
+        if batch_idx % 10 == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_ds.dataset),
+                100. * batch_idx / len(train_ds), loss.item()))
+            train_losses.append(loss.item())
+            train_counter.append(
+                (batch_idx*64) + ((epoch-1)*len(train_ds.dataset)))
+                
+def test():
+    network.eval()
+    test_loss = 0
+    correct = 0
+    with torch.no_grad():
+        for data, target in val_ds:
+            data = data.unsqueeze(1)
+            (image, rays, dynamics) = data
+            (rays_flat, t_vals) = rays
+
+        
+            rgb, _ = render_rgb_depth(
+                model=network, rays_flat=rays_flat, dynamics=dynamics, t_vals=t_vals, rand=True
+            )
+            output = network(data)
+            test_loss += F.nll_loss(output, target, size_average=False).item()
+            pred = output.data.max(1, keepdim=True)[1]
+            correct += pred.eq(target.data.view_as(pred)).sum()
+    test_loss /= len(val_ds.dataset)
+    test_losses.append(test_loss)
+    print('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, len(val_ds.dataset),
+        100. * correct / len(val_ds.dataset)))
+  
+for epoch in range(n_epochs):
+    train(epoch)
+    test()
+
+torch.save( network.state_dict(), 'test_model')
 
 def create_gif(path_to_images, name_gif):
     filenames = glob.glob(path_to_images)
