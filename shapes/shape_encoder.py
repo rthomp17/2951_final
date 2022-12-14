@@ -5,10 +5,13 @@ from torch.autograd import Variable
 from vae import VAE
 
 import torchvision
+from torchvision.io import read_image
 from torchvision import datasets
 from torchvision import transforms
 from torchvision.utils import save_image
 # from torchsummary import summary
+import pickle
+from PIL import Image
 
 
 def loss_fn(recon_x, x, mu, logvar):
@@ -61,19 +64,48 @@ def compare(x, vae):
     return torch.cat([x, recon_x])
 
 
-def main():
-    dataset = datasets.ImageFolder(root='./shape_images', transform=transforms.Compose([
+def generate_encodings(vae, n_train=40, n_test=20):
+    vae.eval()
+    encodings = list()
+    resize = transforms.Resize(64)
+    for i in range(n_train):
+        image = read_image(f"./shape_images/train-shape-{i}.png", torchvision.io.ImageReadMode.RGB)
+        image = resize(image).type(torch.float)
+        representation = vae.representation(image.unsqueeze(0)).squeeze(0)
+        encodings.append((f"train-shape-{i}", representation.detach().numpy()))
+
+    for i in range(n_test):
+        image = read_image(f"./shape_images/test-shape-{i}.png", torchvision.io.ImageReadMode.RGB)
+        image = resize(image).type(torch.float)
+        representation = vae.representation(image.unsqueeze(0)).squeeze(0)
+        encodings.append((f"test-shape-{i}", representation.detach().numpy()))
+
+    return encodings
+
+
+def training():
+    dataset = datasets.ImageFolder(root='./vae_training_images', transform=transforms.Compose([
         transforms.Resize(64),
         transforms.ToTensor(),
     ]))
+    vae = train_vae(dataset, epochs=200)
 
-    # vae = train_vae(dataset, epochs=100)
-    vae = load_vae()
-
-    fixed_x = dataset[199][0].unsqueeze(0)
+    fixed_x = dataset[39][0].unsqueeze(0)
     compare_x = compare(fixed_x, vae)
-
     save_image(compare_x.data.cpu(), 'sample_image.png')
+
+
+def generate():
+    vae = load_vae()
+    encodings = generate_encodings(vae)
+    # print(encodings[0])
+
+    pickle.dump(encodings, open('shape_encodings.pkl', 'wb'))
+
+
+def main():
+    training()
+    generate()
 
 
 if __name__ == "__main__":
