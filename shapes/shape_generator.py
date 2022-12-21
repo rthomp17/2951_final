@@ -3,6 +3,7 @@ import random
 from shapely.geometry import Polygon
 from shapely.geometry.polygon import LinearRing
 import pickle
+import numpy as np
 
 
 def make_box(testing):
@@ -95,20 +96,55 @@ def save_params(params, shape_key='train'):
             i += 1
 
 
+def show_all_shapes(train_shapes, test_shapes):
+    scene = trimesh.Scene()
+
+    for i, shape in enumerate(train_shapes):
+        transform = np.array([[1, 0, 0, ((0.1 * i)%1)*0.8],
+                              [0, 1, 0, int(0.1 * i) * 0.09],
+                              [0, 0, 1, 0],
+                              [0, 0, 0, 1]])
+        scene.add_geometry(shape, node_name=f"zoink{i}", transform=transform)
+
+    for i, shape in enumerate(test_shapes):
+        transform = np.array([[1, 0, 0, ((0.1 * i)%1)*0.8],
+                              [0, 1, 0, -int(0.1 * i) * 0.07 - 0.15],
+                              [0, 0, 1, 0],
+                              [0, 0, 0, 1]])
+        scene.add_geometry(shape, node_name=f"zoinky{i}", transform=transform)
+
+    scene.set_camera(distance=0.85)
+
+        # scene.delete_geometry("zoink")
+
+    png = scene.save_image(resolution=(512, 420))
+
+    f = open("all_objects.png", "wb")
+    f.write(png)
+    f.close()
+
+
 def main():
-    shapes = generate_shapes(0, 20, 20, testing=False)
-    generate_shape_images([s[0] for s in shapes], shape_key='train')
-    save_shapes([s[0] for s in shapes], shape_key='train')
-    save_params([s[1] for s in shapes], shape_key='train')
-    pickle.dump(shapes, open('shape_parameters_train.pkl', 'wb'))
+    # shapes = generate_shapes(0, 20, 20, testing=False)
+    # generate_shape_images([s[0] for s in shapes], shape_key='train')
+    # save_shapes([s[0] for s in shapes], shape_key='train')
+    # save_params([s[1] for s in shapes], shape_key='train')
+    # pickle.dump(shapes, open('shape_parameters_train.pkl', 'wb'))
+    #
+    # shapes = generate_shapes(0, 10, 10, testing=True)
+    # generate_shape_images([s[0] for s in shapes], shape_key='test')
+    # save_shapes([s[0] for s in shapes], shape_key='test')
+    # save_params([s[1] for s in shapes], shape_key='test')
+    # pickle.dump(shapes, open('shape_parameters_test.pkl', 'wb'))
 
-    shapes = generate_shapes(0, 10, 10, testing=True)
-    generate_shape_images([s[0] for s in shapes], shape_key='test')
-    save_shapes([s[0] for s in shapes], shape_key='test')
-    save_params([s[1] for s in shapes], shape_key='test')
-    pickle.dump(shapes, open('shape_parameters_test.pkl', 'wb'))
+    train_shapes = pickle.load(open('shape_parameters_train.pkl', 'rb'))
+    test_shapes = pickle.load(open('shape_parameters_test.pkl', 'rb'))
 
-    # print(pickle.load(open('shape_parameters_train.pkl', 'rb')))
+    show_all_shapes([s[0] for s in train_shapes], [s[0] for s in test_shapes])
+
+    # shapes = generate_shapes(0, 20, 20, testing=False)
+    #
+    # shapes[0][0].show()
 
 
 if __name__ == "__main__":

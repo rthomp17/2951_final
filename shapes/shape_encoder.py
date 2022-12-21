@@ -103,9 +103,23 @@ def generate():
     pickle.dump(encodings, open('shape_encodings.pkl', 'wb'))
 
 
+def make_image_examples():
+    dataset = datasets.ImageFolder(root='./vae_training_images', transform=transforms.Compose([
+        transforms.Resize(64),
+        transforms.ToTensor(),
+    ]))
+    vae = load_vae()
+
+    for i in range(40):
+        fixed_x = dataset[i][0].unsqueeze(0)
+        compare_x = compare(fixed_x, vae)
+        save_image(compare_x.data.cpu(), f'encoder_image_comparisons/sample_shape_{i}.png')
+
+
 def main():
-    training()
-    generate()
+    # training()
+    # generate()
+    make_image_examples()
 
 
 if __name__ == "__main__":
